@@ -1,5 +1,5 @@
 """
-Vercel function for analyzing food photos using GPT-4 Vision and OpenCV
+Vercel function for analyzing food photos using Langdock API (ChatGPT) and OpenCV
 """
 import json
 import base64
@@ -7,19 +7,19 @@ import os
 import logging
 from io import BytesIO
 from typing import Dict, Any, List, Optional, Tuple
+import requests
 
 import cv2
 import numpy as np
 from PIL import Image
-import openai
-from openai import OpenAI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Langdock API configuration
+LANGDOCK_API_KEY = os.environ.get("LANGDOCK_API_KEY")
+LANGDOCK_BASE_URL = os.environ.get("LANGDOCK_BASE_URL", "https://api.langdock.com/v1")
 
 # Reference objects with their real-world dimensions (in mm)
 REFERENCE_OBJECTS = {
@@ -39,9 +39,12 @@ REFERENCE_OBJECTS = {
 }
 
 
-def analyze_with_gpt4_vision(image_base64: str, user_prompt: str) -> Dict[str, Any]:
-    """Analyze image using GPT-4 Vision"""
+def analyze_with_langdock_vision(image_base64: str, user_prompt: str) -> Dict[str, Any]:
+    """Analyze image using Langdock API (ChatGPT with vision)"""
     try:
+        if not LANGDOCK_API_KEY:
+            return {"error": "Langdock API key not configured"}
+        
         system_prompt = """
 Ты эксперт по анализу фотографий еды. Твоя задача:
 
@@ -92,9 +95,10 @@ def analyze_with_gpt4_vision(image_base64: str, user_prompt: str) -> Dict[str, A
 }
         """
         
-        response = client.chat.completions.create(
-            model="gpt-4-vision-preview",
-            messages=[
+        # Prepare request payload for Langdock
+        payload = {
+            "model": "gpt-4-vision-preview",  # или другая модель с поддержкой изображений
+            "messages": [
                 {
                     "role": "system",
                     "content": system_prompt
@@ -113,11 +117,29 @@ def analyze_with_gpt4_vision(image_base64: str, user_prompt: str) -> Dict[str, A
                     ]
                 }
             ],
-            max_tokens=1000,
-            temperature=0.1
+            "max_tokens": 1000,
+            "temperature": 0.1
+        }
+        
+        # Make request to Langdock API
+        headers = {
+            "Authorization": f"Bearer {LANGDOCK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        response = requests.post(
+            f"{LANGDOCK_BASE_URL}/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30
         )
         
-        content = response.choices[0].message.content
+        if response.status_code != 200:
+            logger.error(f"Langdock API error: {response.status_code} - {response.text}")
+            return {"error": f"Langdock API error: {response.status_code}"}
+        
+        response_data = response.json()
+        content = response_data["choices"][0]["message"]["content"]
         
         # Try to parse JSON response
         try:
@@ -131,9 +153,92 @@ def analyze_with_gpt4_vision(image_base64: str, user_prompt: str) -> Dict[str, A
             else:
                 raise ValueError("No valid JSON found in response")
                 
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Langdock API request failed: {e}")
+        return {"error": f"API request failed: {str(e)}"}
     except Exception as e:
-        logger.error(f"GPT-4 Vision analysis failed: {e}")
+        logger.error(f"Langdock Vision analysis failed: {e}")
         return {"error": f"AI analysis failed: {str(e)}"}
+
+
+def analyze_with_fallback_text(user_prompt: str, image_description: str = "") -> Dict[str, Any]:
+    """Fallback analysis using text-only model if vision is not available"""
+    try:
+        if not LANGDOCK_API_KEY:
+            return {"error": "Langdock API key not configured"}
+        
+        fallback_prompt = f"""
+Пользователь отправил фото еды с описанием: "{user_prompt}"
+{f"Дополнительное описание изображения: {image_description}" if image_description else ""}
+
+Поскольку анализ изображения недоступен, дай общие рекомендации по БЖУ для типичных блюд.
+
+Отвечай в формате JSON:
+{{
+  "food_items": [
+    {{
+      "name": "предполагаемое блюдо",
+      "estimated_weight": примерный_вес_в_граммах,
+      "confidence": 0.3,
+      "nutrition_estimate": {{
+        "calories": примерные_калории,
+        "proteins": примерные_белки_г,
+        "fats": примерные_жиры_г,
+        "carbs": примерные_углеводы_г
+      }}
+    }}
+  ],
+  "reference_object": {{
+    "type": "unknown",
+    "name": "Эталонный объект не найден",
+    "confidence": 0.0
+  }},
+  "estimated_weight": общий_примерный_вес,
+  "confidence": 0.3,
+  "note": "Анализ выполнен без изображения, данные приблизительные"
+}}
+        """
+        
+        payload = {
+            "model": "gpt-3.5-turbo",  # Используем текстовую модель
+            "messages": [
+                {"role": "user", "content": fallback_prompt}
+            ],
+            "max_tokens": 800,
+            "temperature": 0.1
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {LANGDOCK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        response = requests.post(
+            f"{LANGDOCK_BASE_URL}/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            return {"error": f"Langdock API error: {response.status_code}"}
+        
+        response_data = response.json()
+        content = response_data["choices"][0]["message"]["content"]
+        
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            import re
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group())
+            else:
+                return {"error": "Could not parse AI response"}
+                
+    except Exception as e:
+        logger.error(f"Fallback analysis failed: {e}")
+        return {"error": f"Fallback analysis failed: {str(e)}"}
 
 
 def detect_reference_object_opencv(image: np.ndarray) -> Optional[Dict[str, Any]]:
@@ -173,32 +278,28 @@ def detect_reference_object_opencv(image: np.ndarray) -> Optional[Dict[str, Any]
                             "pixel_size": diameter_pixels,
                             "real_size": expected_diameter,
                             "scale_factor": scale_factor,
-                            "confidence": 0.7,  # OpenCV detection confidence
+                            "confidence": 0.7,
                             "position": (int(x), int(y))
                         })
         
-        # Detect rectangles (cards, matchboxes, phones)
+        # Detect rectangles (cards, matchboxes)
         contours, _ = cv2.findContours(gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         for contour in contours:
-            # Approximate contour to polygon
             epsilon = 0.02 * cv2.arcLength(contour, True)
             approx = cv2.approxPolyDP(contour, epsilon, True)
             
-            # Check if it's roughly rectangular (4 corners)
             if len(approx) == 4:
                 rect = cv2.boundingRect(contour)
                 width, height = rect[2], rect[3]
                 
-                # Skip very small rectangles
                 if width < 20 or height < 20:
                     continue
                 
                 aspect_ratio = max(width, height) / min(width, height)
                 
-                # Credit card aspect ratio is approximately 1.6
+                # Credit card aspect ratio
                 if 1.4 <= aspect_ratio <= 1.8:
-                    # Likely a credit card
                     card_data = REFERENCE_OBJECTS["credit_card"]
                     scale_factor = card_data["length"] / max(width, height)
                     
@@ -212,7 +313,6 @@ def detect_reference_object_opencv(image: np.ndarray) -> Optional[Dict[str, Any]
                         "position": (rect[0] + width//2, rect[1] + height//2)
                     })
         
-        # Return the most confident detection
         if detected_objects:
             best_object = max(detected_objects, key=lambda x: x["confidence"])
             return best_object
@@ -222,44 +322,6 @@ def detect_reference_object_opencv(image: np.ndarray) -> Optional[Dict[str, Any]
     except Exception as e:
         logger.error(f"OpenCV detection failed: {e}")
         return None
-
-
-def calculate_food_weight(
-    food_area_pixels: int,
-    reference_object: Dict[str, Any],
-    food_type: str = "general"
-) -> float:
-    """Calculate food weight based on area and reference object"""
-    try:
-        scale_factor = reference_object.get("scale_factor", 1.0)
-        
-        # Convert pixel area to real area (mm²)
-        real_area_mm2 = food_area_pixels * (scale_factor ** 2)
-        
-        # Convert to cm²
-        real_area_cm2 = real_area_mm2 / 100
-        
-        # Estimate weight based on food type and area
-        # These are rough estimates for different food densities
-        density_factors = {
-            "rice": 0.8,      # g/cm²
-            "pasta": 0.7,
-            "meat": 1.2,
-            "vegetables": 0.5,
-            "bread": 0.6,
-            "soup": 1.0,
-            "salad": 0.3,
-            "general": 0.8    # default
-        }
-        
-        density = density_factors.get(food_type.lower(), density_factors["general"])
-        estimated_weight = real_area_cm2 * density
-        
-        return max(10, min(2000, estimated_weight))  # Clamp between 10g and 2kg
-        
-    except Exception as e:
-        logger.error(f"Weight calculation failed: {e}")
-        return 100  # Default weight
 
 
 def process_image(image_base64: str, user_prompt: str) -> Dict[str, Any]:
@@ -272,17 +334,23 @@ def process_image(image_base64: str, user_prompt: str) -> Dict[str, Any]:
         # Convert to OpenCV format
         image_cv = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
         
-        # Analyze with GPT-4 Vision
-        gpt_result = analyze_with_gpt4_vision(image_base64, user_prompt)
+        # Try Langdock Vision analysis first
+        langdock_result = analyze_with_langdock_vision(image_base64, user_prompt)
         
-        if "error" in gpt_result:
-            return gpt_result
+        # If vision analysis failed, try fallback
+        if "error" in langdock_result:
+            logger.warning(f"Vision analysis failed: {langdock_result['error']}")
+            # Try fallback text analysis
+            langdock_result = analyze_with_fallback_text(user_prompt, "Изображение еды")
+        
+        if "error" in langdock_result:
+            return langdock_result
         
         # Enhance with OpenCV detection
         opencv_reference = detect_reference_object_opencv(image_cv)
         
         # Combine results
-        result = gpt_result.copy()
+        result = langdock_result.copy()
         
         # If OpenCV found a reference object, use it to refine the analysis
         if opencv_reference and "reference_object" in result:

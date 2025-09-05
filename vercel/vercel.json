@@ -17,7 +17,8 @@
     }
   },
   "env": {
-    "OPENAI_API_KEY": "@openai_api_key",
+    "LANGDOCK_API_KEY": "@langdock_api_key",
+    "LANGDOCK_BASE_URL": "https://api.langdock.com/v1",
     "OPENFOODFACTS_API_URL": "https://world.openfoodfacts.org/api"
   },
   "build": {
