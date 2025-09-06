@@ -1,24 +1,19 @@
 {
   "functions": {
     "api/analyze-photo.py": {
-      "runtime": "python3.12",
+      "runtime": "python3.11",
       "maxDuration": 30,
       "memory": 1024
     },
     "api/process-barcode.py": {
-      "runtime": "python3.12",
+      "runtime": "python3.11",
       "maxDuration": 15,
       "memory": 512
     },
     "api/health.py": {
-      "runtime": "python3.12",
+      "runtime": "python3.11",
       "maxDuration": 5,
       "memory": 128
-    }
-  },
-  "build": {
-    "env": {
-      "PYTHONPATH": "/var/task"
     }
   }
 }
