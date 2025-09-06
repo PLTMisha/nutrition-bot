@@ -48,14 +48,27 @@ class DatabaseManager:
             # Convert psycopg2 SSL parameters to asyncpg format and remove incompatible ones
             import re
             
+            # Handle sslmode parameter conversion more robustly
             if "sslmode=" in db_url:
-                # Replace sslmode with ssl for asyncpg
-                db_url = db_url.replace("sslmode=require", "ssl=true")
-                db_url = db_url.replace("sslmode=prefer", "ssl=true")
-                db_url = db_url.replace("sslmode=allow", "ssl=true")
-                db_url = db_url.replace("sslmode=disable", "ssl=false")
-                # Remove any remaining sslmode parameters
-                db_url = re.sub(r'[&?]sslmode=[^&]*', '', db_url)
+                # Extract the sslmode value
+                sslmode_match = re.search(r'sslmode=([^&]*)', db_url)
+                if sslmode_match:
+                    sslmode_value = sslmode_match.group(1)
+                    # Convert to asyncpg ssl parameter based on value
+                    if sslmode_value in ['require', 'prefer', 'allow', 'verify-ca', 'verify-full']:
+                        # Add ssl=true for secure modes
+                        if '?' in db_url:
+                            db_url += '&ssl=true'
+                        else:
+                            db_url += '?ssl=true'
+                    elif sslmode_value == 'disable':
+                        # Add ssl=false for disabled mode
+                        if '?' in db_url:
+                            db_url += '&ssl=false'
+                        else:
+                            db_url += '?ssl=false'
+                    # Remove the original sslmode parameter
+                    db_url = re.sub(r'[&?]sslmode=[^&]*', '', db_url)
             
             # Remove other psycopg2-specific parameters that asyncpg doesn't support
             incompatible_params = [
