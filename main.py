@@ -42,20 +42,37 @@ class NutritionBot:
         self._shutdown_event = asyncio.Event()
     
     async def initialize(self) -> None:
-        """Initialize bot components"""
+        """Initialize bot components with emergency fallback mode"""
         logger.info("Initializing Nutrition Bot...")
         
+        # Emergency mode flag
+        emergency_mode = False
+        
         try:
-            # Initialize database
-            await init_database()
-            await create_tables()
+            # Try to initialize database with aggressive timeout
+            logger.info("🔄 Attempting database initialization...")
             
-            # Initialize services
+            # Set shorter timeout for database operations
+            import asyncio
+            try:
+                await asyncio.wait_for(init_database(), timeout=10.0)
+                await asyncio.wait_for(create_tables(), timeout=10.0)
+                logger.info("✅ Database initialized successfully")
+            except asyncio.TimeoutError:
+                logger.error("⏰ Database initialization timeout - entering EMERGENCY MODE")
+                emergency_mode = True
+            except Exception as db_error:
+                logger.error(f"💥 Database initialization failed: {db_error} - entering EMERGENCY MODE")
+                emergency_mode = True
+            
+            # Initialize services (always succeed)
+            logger.info("🔄 Initializing services...")
             self.db_service = DatabaseService()
             self.cache_manager = CacheManager()
             self.rate_limiter = AdvancedRateLimiter()
             
-            # Initialize bot and dispatcher
+            # Initialize bot and dispatcher (critical - must succeed)
+            logger.info("🔄 Initializing bot and dispatcher...")
             self.bot = Bot(
                 token=BOT_CONFIG["token"],
                 parse_mode=ParseMode.HTML
@@ -63,21 +80,45 @@ class NutritionBot:
             
             self.dp = Dispatcher(storage=MemoryStorage())
             
-            # Setup middlewares
+            # Setup middlewares (with emergency mode flag)
+            logger.info("🔄 Setting up middlewares...")
             setup_middlewares(self.dp, self.db_service, self.cache_manager, self.rate_limiter)
             
             # Register handlers
+            logger.info("🔄 Registering handlers...")
             register_all_handlers(self.dp)
             
             # Create web application for health checks
             self.app = web.Application()
             self.setup_routes()
             
-            logger.info("Bot initialized successfully")
+            if emergency_mode:
+                logger.warning("🚨 BOT STARTED IN EMERGENCY MODE - Database unavailable, using fallbacks")
+                logger.warning("🔧 Features available: Text search with offline DB, Basic commands")
+                logger.warning("🚫 Features limited: Database logging, User statistics, History")
+            else:
+                logger.info("✅ Bot initialized successfully in FULL MODE")
             
         except Exception as e:
-            logger.error(f"Failed to initialize bot: {e}")
-            raise
+            logger.error(f"💥 CRITICAL: Failed to initialize bot core components: {e}")
+            logger.error("🆘 Attempting minimal emergency initialization...")
+            
+            # Last resort emergency initialization
+            try:
+                self.bot = Bot(token=BOT_CONFIG["token"], parse_mode=ParseMode.HTML)
+                self.dp = Dispatcher(storage=MemoryStorage())
+                self.app = web.Application()
+                self.setup_routes()
+                
+                # Register only basic handlers without middleware
+                from handlers.basic import router as basic_router
+                self.dp.include_router(basic_router)
+                
+                logger.warning("🆘 MINIMAL EMERGENCY MODE - Only basic commands available")
+                
+            except Exception as critical_error:
+                logger.error(f"💀 FATAL: Cannot initialize even minimal bot: {critical_error}")
+                raise
     
     def setup_routes(self) -> None:
         """Setup web application routes"""
@@ -212,46 +253,81 @@ class NutritionBot:
             await self.cleanup()
     
     async def _background_tasks(self) -> None:
-        """Run background maintenance tasks"""
+        """Run background maintenance tasks with error isolation"""
         logger.info("Starting background tasks...")
         
         while not self._shutdown_event.is_set():
             try:
-                # Cache cleanup
-                await self.cache_manager.cleanup_expired()
+                # Cache cleanup (safe operation)
+                try:
+                    if self.cache_manager:
+                        await self.cache_manager.cleanup_expired()
+                except Exception as e:
+                    logger.warning(f"Cache cleanup failed (non-critical): {e}")
                 
-                # Database maintenance
-                await self.db_service.cleanup_old_sessions()
+                # Database maintenance (with timeout and fallback)
+                try:
+                    if self.db_service:
+                        await asyncio.wait_for(
+                            self.db_service.cleanup_old_sessions(), 
+                            timeout=30.0
+                        )
+                except asyncio.TimeoutError:
+                    logger.warning("Database cleanup timeout (non-critical)")
+                except Exception as e:
+                    logger.warning(f"Database cleanup failed (non-critical): {e}")
                 
-                # Rate limiter cleanup
-                self.rate_limiter.cleanup()
+                # Rate limiter cleanup (safe operation)
+                try:
+                    if self.rate_limiter:
+                        self.rate_limiter.cleanup()
+                except Exception as e:
+                    logger.warning(f"Rate limiter cleanup failed (non-critical): {e}")
                 
                 # Wait before next cleanup
                 await asyncio.sleep(300)  # 5 minutes
                 
             except asyncio.CancelledError:
+                logger.info("Background tasks cancelled")
                 break
             except Exception as e:
-                logger.error(f"Error in background tasks: {e}")
+                logger.error(f"Unexpected error in background tasks: {e}")
                 await asyncio.sleep(60)  # Wait 1 minute before retry
     
     async def cleanup(self) -> None:
-        """Cleanup resources"""
+        """Cleanup resources with error isolation"""
         logger.info("Cleaning up resources...")
         
+        # Bot session cleanup
         try:
             if self.bot:
-                await self.bot.session.close()
-            
-            if self.cache_manager:
-                await self.cache_manager.close()
-            
-            await close_database()
-            
-            logger.info("Cleanup completed")
-            
+                await asyncio.wait_for(self.bot.session.close(), timeout=5.0)
+                logger.info("✅ Bot session closed")
+        except asyncio.TimeoutError:
+            logger.warning("⏰ Bot session close timeout (non-critical)")
         except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+            logger.warning(f"⚠️ Bot session close failed (non-critical): {e}")
+        
+        # Cache manager cleanup
+        try:
+            if self.cache_manager:
+                await asyncio.wait_for(self.cache_manager.close(), timeout=5.0)
+                logger.info("✅ Cache manager closed")
+        except asyncio.TimeoutError:
+            logger.warning("⏰ Cache manager close timeout (non-critical)")
+        except Exception as e:
+            logger.warning(f"⚠️ Cache manager close failed (non-critical): {e}")
+        
+        # Database cleanup
+        try:
+            await asyncio.wait_for(close_database(), timeout=10.0)
+            logger.info("✅ Database connection closed")
+        except asyncio.TimeoutError:
+            logger.warning("⏰ Database close timeout (non-critical)")
+        except Exception as e:
+            logger.warning(f"⚠️ Database close failed (non-critical): {e}")
+        
+        logger.info("🧹 Cleanup completed (with graceful error handling)")
     
     def shutdown(self) -> None:
         """Signal shutdown"""
