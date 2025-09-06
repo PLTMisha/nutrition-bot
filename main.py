@@ -281,8 +281,8 @@ async def main() -> None:
         # Determine run mode based on environment
         if settings.railway_environment == "production":
             # Production mode - webhook
-            # Use Railway's private domain from environment variables
-            railway_domain = os.getenv('RAILWAY_PRIVATE_DOMAIN', 'nutrition-bot.railway.app')
+            # Use Railway's public domain for webhook (accessible from external services)
+            railway_domain = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_STATIC_URL', '').replace('https://', '') or 'nutrition-bot.railway.app'
             webhook_url = f"https://{railway_domain}"
             await nutrition_bot.start_webhook(webhook_url)
         else:
