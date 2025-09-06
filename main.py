@@ -168,7 +168,7 @@ class NutritionBot:
             site = web.TCPSite(runner, host="0.0.0.0", port=settings.port)
             await site.start()
             
-            logger.info(f"Webhook server started on port {settings.port}")
+            logger.info(f"Webhook server started on port {settings.port} - Updated with fixes")
             
             # Set webhook AFTER server is running
             await self.bot.set_webhook(
