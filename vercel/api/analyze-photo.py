@@ -9,8 +9,6 @@ from io import BytesIO
 from typing import Dict, Any, List, Optional, Tuple
 import requests
 
-import cv2
-import numpy as np
 from PIL import Image
 
 # Configure logging
@@ -241,98 +239,25 @@ def analyze_with_fallback_text(user_prompt: str, image_description: str = "") ->
         return {"error": f"Fallback analysis failed: {str(e)}"}
 
 
-def detect_reference_object_opencv(image: np.ndarray) -> Optional[Dict[str, Any]]:
-    """Detect reference objects using OpenCV"""
+def detect_reference_object_simple(image_pil: Image.Image) -> Optional[Dict[str, Any]]:
+    """Simple reference object detection using PIL only"""
     try:
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # Detect circles (coins, plates, cups)
-        circles = cv2.HoughCircles(
-            gray,
-            cv2.HOUGH_GRADIENT,
-            dp=1,
-            minDist=30,
-            param1=50,
-            param2=30,
-            minRadius=10,
-            maxRadius=200
-        )
-        
-        detected_objects = []
-        
-        if circles is not None:
-            circles = np.round(circles[0, :]).astype("int")
-            for (x, y, r) in circles:
-                diameter_pixels = r * 2
-                
-                # Try to match with known circular objects
-                for obj_key, obj_data in REFERENCE_OBJECTS.items():
-                    if "diameter" in obj_data:
-                        expected_diameter = obj_data["diameter"]
-                        # Calculate scale factor
-                        scale_factor = expected_diameter / diameter_pixels
-                        
-                        detected_objects.append({
-                            "type": obj_key,
-                            "name": obj_data["name"],
-                            "pixel_size": diameter_pixels,
-                            "real_size": expected_diameter,
-                            "scale_factor": scale_factor,
-                            "confidence": 0.7,
-                            "position": (int(x), int(y))
-                        })
-        
-        # Detect rectangles (cards, matchboxes)
-        contours, _ = cv2.findContours(gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        for contour in contours:
-            epsilon = 0.02 * cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, epsilon, True)
-            
-            if len(approx) == 4:
-                rect = cv2.boundingRect(contour)
-                width, height = rect[2], rect[3]
-                
-                if width < 20 or height < 20:
-                    continue
-                
-                aspect_ratio = max(width, height) / min(width, height)
-                
-                # Credit card aspect ratio
-                if 1.4 <= aspect_ratio <= 1.8:
-                    card_data = REFERENCE_OBJECTS["credit_card"]
-                    scale_factor = card_data["length"] / max(width, height)
-                    
-                    detected_objects.append({
-                        "type": "credit_card",
-                        "name": card_data["name"],
-                        "pixel_size": max(width, height),
-                        "real_size": card_data["length"],
-                        "scale_factor": scale_factor,
-                        "confidence": 0.6,
-                        "position": (rect[0] + width//2, rect[1] + height//2)
-                    })
-        
-        if detected_objects:
-            best_object = max(detected_objects, key=lambda x: x["confidence"])
-            return best_object
-        
+        # For now, return None - OpenCV functionality disabled
+        # In the future, could implement basic detection using PIL
+        logger.info("OpenCV detection disabled - using AI-only analysis")
         return None
         
     except Exception as e:
-        logger.error(f"OpenCV detection failed: {e}")
+        logger.error(f"Simple detection failed: {e}")
         return None
 
 
 def process_image(image_base64: str, user_prompt: str) -> Dict[str, Any]:
-    """Main image processing function"""
+    """Main image processing function - simplified without OpenCV"""
     try:
-        # Decode base64 image
+        # Decode base64 image for basic validation
         image_data = base64.b64decode(image_base64)
         image_pil = Image.open(BytesIO(image_data))
-        
-        # Convert to OpenCV format
-        image_cv = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
         
         # Try Langdock Vision analysis first
         langdock_result = analyze_with_langdock_vision(image_base64, user_prompt)
@@ -346,29 +271,8 @@ def process_image(image_base64: str, user_prompt: str) -> Dict[str, Any]:
         if "error" in langdock_result:
             return langdock_result
         
-        # Enhance with OpenCV detection
-        opencv_reference = detect_reference_object_opencv(image_cv)
-        
-        # Combine results
+        # Use AI-only analysis (OpenCV disabled for Vercel compatibility)
         result = langdock_result.copy()
-        
-        # If OpenCV found a reference object, use it to refine the analysis
-        if opencv_reference and "reference_object" in result:
-            # Update reference object with OpenCV data
-            result["reference_object"].update({
-                "opencv_detection": True,
-                "pixel_size": opencv_reference["pixel_size"],
-                "scale_factor": opencv_reference["scale_factor"]
-            })
-            
-            # Recalculate food weights if needed
-            if "food_items" in result:
-                for item in result["food_items"]:
-                    # Use OpenCV scale factor for more accurate weight estimation
-                    if "estimated_weight" in item:
-                        # Adjust weight based on OpenCV scale factor
-                        adjustment_factor = opencv_reference["scale_factor"] / result.get("scale_factor", 1.0)
-                        item["estimated_weight"] = item["estimated_weight"] * adjustment_factor
         
         # Ensure all required fields are present
         if "food_items" not in result:
@@ -391,6 +295,10 @@ def process_image(image_base64: str, user_prompt: str) -> Dict[str, Any]:
                 result["confidence"] = avg_confidence
             else:
                 result["confidence"] = 0.0
+        
+        # Add note about simplified analysis
+        result["analysis_mode"] = "ai_only"
+        result["note"] = "Анализ выполнен только с помощью ИИ (OpenCV отключен для совместимости с Vercel)"
         
         return result
         
