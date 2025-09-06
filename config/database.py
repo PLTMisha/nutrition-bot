@@ -54,6 +54,9 @@ class DatabaseManager:
                 sslmode_match = re.search(r'sslmode=([^&]*)', db_url)
                 if sslmode_match:
                     sslmode_value = sslmode_match.group(1)
+                    # Remove the original sslmode parameter first
+                    db_url = re.sub(r'[&?]sslmode=[^&]*', '', db_url)
+                    
                     # Convert to asyncpg ssl parameter based on value
                     if sslmode_value in ['require', 'prefer', 'allow', 'verify-ca', 'verify-full']:
                         # Add ssl=true for secure modes
@@ -67,8 +70,6 @@ class DatabaseManager:
                             db_url += '&ssl=false'
                         else:
                             db_url += '?ssl=false'
-                    # Remove the original sslmode parameter
-                    db_url = re.sub(r'[&?]sslmode=[^&]*', '', db_url)
             
             # Remove other psycopg2-specific parameters that asyncpg doesn't support
             incompatible_params = [
