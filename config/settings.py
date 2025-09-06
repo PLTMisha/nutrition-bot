@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     vercel_api_url: str
     vercel_api_key: Optional[str] = None
     
-    # OpenAI
-    openai_api_key: str
+    # Langdock API (replaces OpenAI)
+    langdock_api_key: Optional[str] = None
     
     # Open Food Facts
     openfoodfacts_api_url: str = "https://world.openfoodfacts.org/api"
@@ -60,11 +60,6 @@ class Settings(BaseSettings):
             raise ValueError('Invalid Telegram bot token')
         return v
     
-    @validator('openai_api_key')
-    def validate_openai_key(cls, v):
-        if not v or not v.startswith('sk-'):
-            raise ValueError('Invalid OpenAI API key')
-        return v
     
     class Config:
         env_file = ".env"
@@ -92,9 +87,10 @@ BOT_CONFIG = {
     "disable_web_page_preview": True,
 }
 
-# OpenAI configuration
-OPENAI_CONFIG = {
-    "api_key": settings.openai_api_key,
+# Langdock configuration (replaces OpenAI)
+LANGDOCK_CONFIG = {
+    "api_key": settings.langdock_api_key,
+    "base_url": "https://api.langdock.com/v1",
     "model": "gpt-4-vision-preview",
     "max_tokens": 1000,
     "temperature": 0.1,
