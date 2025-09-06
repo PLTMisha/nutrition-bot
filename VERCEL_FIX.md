@@ -59,6 +59,24 @@ Environment Variable "LANGDOCK_API_KEY" references Secret "langdock_api_key", wh
 // Переменные добавляются через интерфейс Vercel
 ```
 
+## ❌ Вторая ошибка:
+```
+Error: Function Runtimes must have a valid version, for example `now-php@1.0.0`.
+```
+
+### Решение второй ошибки:
+Обновили версию Python runtime с `python3.9` на `python3.12` в `vercel.json`.
+
+**Было:**
+```json
+"runtime": "python3.9"
+```
+
+**Стало:**
+```json
+"runtime": "python3.12"
+```
+
 ## ✅ Проверка:
 После успешного деплоя откройте:
 `https://your-project.vercel.app/api/health`
