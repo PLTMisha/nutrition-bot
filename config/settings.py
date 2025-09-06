@@ -46,7 +46,12 @@ class Settings:
         # Railway - detect Railway environment by checking for Railway-specific variables
         railway_vars = ['RAILWAY_PROJECT_ID', 'RAILWAY_SERVICE_ID', 'RAILWAY_DEPLOYMENT_ID']
         is_railway = any(os.getenv(var) for var in railway_vars)
-        self.railway_environment = "production" if is_railway else "development"
+        
+        # Force webhook mode if FORCE_WEBHOOK_MODE is set or if PORT is set (Railway indicator)
+        force_webhook = os.getenv('FORCE_WEBHOOK_MODE', '').lower() == 'true'
+        has_port = os.getenv('PORT') is not None
+        
+        self.railway_environment = "production" if (is_railway or force_webhook or has_port) else "development"
         self.port = int(get_env_var('PORT', "8000", required=False))
         
         # Logging
