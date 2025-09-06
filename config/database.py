@@ -44,8 +44,10 @@ class DatabaseManager:
                 # If it's already postgresql+asyncpg://, keep it as is
                 pass
             
-            # Fix SSL parameters for asyncpg compatibility
-            # Convert psycopg2 SSL parameters to asyncpg format
+            # Fix SSL and other parameters for asyncpg compatibility
+            # Convert psycopg2 SSL parameters to asyncpg format and remove incompatible ones
+            import re
+            
             if "sslmode=" in db_url:
                 # Replace sslmode with ssl for asyncpg
                 db_url = db_url.replace("sslmode=require", "ssl=true")
@@ -53,8 +55,29 @@ class DatabaseManager:
                 db_url = db_url.replace("sslmode=allow", "ssl=true")
                 db_url = db_url.replace("sslmode=disable", "ssl=false")
                 # Remove any remaining sslmode parameters
-                import re
                 db_url = re.sub(r'[&?]sslmode=[^&]*', '', db_url)
+            
+            # Remove other psycopg2-specific parameters that asyncpg doesn't support
+            incompatible_params = [
+                'channel_binding',
+                'gssencmode', 
+                'krbsrvname',
+                'gsslib',
+                'service',
+                'passfile',
+                'requirepeer',
+                'ssl_min_protocol_version',
+                'ssl_max_protocol_version',
+                'gssencmode',
+                'target_session_attrs'
+            ]
+            
+            for param in incompatible_params:
+                db_url = re.sub(rf'[&?]{param}=[^&]*', '', db_url)
+            
+            # Clean up any double ampersands or trailing ampersands/question marks
+            db_url = re.sub(r'[&?]+', lambda m: '&' if '&' in m.group() else '?', db_url)
+            db_url = re.sub(r'[&?]$', '', db_url)
             
             self._engine = create_async_engine(
                 db_url,
