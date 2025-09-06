@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, update, delete, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.database import db_manager, retry_db_operation
+from config.database import db_manager, retry_db_operation, DatabaseFallback
 from models.db_models import User, FoodLog, ProductCache, UserSession
 
 logger = logging.getLogger(__name__)
@@ -116,7 +116,6 @@ class DatabaseService:
             logger.error(f"Error updating user language: {e}")
             return False
     
-    @retry_db_operation(max_retries=3)
     async def add_food_log(
         self,
         user_id: int,
@@ -134,62 +133,109 @@ class DatabaseService:
         notes: Optional[str] = None,
         image_url: Optional[str] = None
     ) -> FoodLog:
-        """Add new food log entry"""
-        async with db_manager.get_session() as session:
-            food_log = FoodLog(
-                user_id=user_id,
-                product_name=product_name,
-                brand=brand,
-                barcode=barcode,
-                quantity_g=quantity_g,
-                calories=calories,
-                proteins=proteins,
-                fats=fats,
-                carbs=carbs,
-                source=source,
-                confidence_score=confidence_score,
-                meal_type=meal_type,
-                notes=notes,
-                image_url=image_url
-            )
-            
-            session.add(food_log)
-            await session.commit()
-            await session.refresh(food_log)
-            
-            logger.info(f"Added food log: {product_name} for user {user_id}")
-            return food_log
-    
-    @retry_db_operation(max_retries=2)
-    async def get_daily_nutrition_summary(self, user_id: int, target_date: date) -> Dict[str, float]:
-        """Get nutrition summary for a specific date"""
-        async with db_manager.get_session() as session:
-            stmt = (
-                select(
-                    func.sum(FoodLog.calories).label('total_calories'),
-                    func.sum(FoodLog.proteins).label('total_proteins'),
-                    func.sum(FoodLog.fats).label('total_fats'),
-                    func.sum(FoodLog.carbs).label('total_carbs'),
-                    func.count(FoodLog.id).label('entries_count')
-                )
-                .where(
-                    and_(
-                        FoodLog.user_id == user_id,
-                        FoodLog.date == target_date
+        """Add new food log entry with fallback to file logging"""
+        try:
+            @retry_db_operation(max_retries=3)
+            async def _add_to_db():
+                async with db_manager.get_session() as session:
+                    food_log = FoodLog(
+                        user_id=user_id,
+                        product_name=product_name,
+                        brand=brand,
+                        barcode=barcode,
+                        quantity_g=quantity_g,
+                        calories=calories,
+                        proteins=proteins,
+                        fats=fats,
+                        carbs=carbs,
+                        source=source,
+                        confidence_score=confidence_score,
+                        meal_type=meal_type,
+                        notes=notes,
+                        image_url=image_url
                     )
-                )
-            )
+                    
+                    session.add(food_log)
+                    await session.commit()
+                    await session.refresh(food_log)
+                    
+                    logger.info(f"Added food log: {product_name} for user {user_id}")
+                    return food_log
             
-            result = await session.execute(stmt)
-            row = result.first()
+            return await _add_to_db()
             
-            return {
-                'calories': float(row.total_calories or 0),
-                'proteins': float(row.total_proteins or 0),
-                'fats': float(row.total_fats or 0),
-                'carbs': float(row.total_carbs or 0),
-                'entries_count': int(row.entries_count or 0)
+        except Exception as e:
+            logger.error(f"Failed to add food log to database: {e}")
+            
+            # Fallback: log to file
+            nutrition_data = {
+                'product_name': product_name,
+                'brand': brand,
+                'barcode': barcode,
+                'quantity_g': quantity_g,
+                'calories': calories,
+                'proteins': proteins,
+                'fats': fats,
+                'carbs': carbs,
+                'source': source,
+                'confidence_score': confidence_score,
+                'meal_type': meal_type,
+                'notes': notes,
+                'image_url': image_url
             }
+            
+            await DatabaseFallback.log_to_file(user_id, product_name, nutrition_data)
+            
+            # Return a mock FoodLog object
+            class MockFoodLog:
+                def __init__(self, **kwargs):
+                    for key, value in kwargs.items():
+                        setattr(self, key, value)
+                    self.id = None
+                    self.logged_at = datetime.utcnow()
+                    self.date = date.today()
+            
+            return MockFoodLog(**nutrition_data, user_id=user_id)
+    
+    async def get_daily_nutrition_summary(self, user_id: int, target_date: date) -> Dict[str, float]:
+        """Get nutrition summary for a specific date with fallback"""
+        try:
+            @retry_db_operation(max_retries=2)
+            async def _get_from_db():
+                async with db_manager.get_session() as session:
+                    stmt = (
+                        select(
+                            func.sum(FoodLog.calories).label('total_calories'),
+                            func.sum(FoodLog.proteins).label('total_proteins'),
+                            func.sum(FoodLog.fats).label('total_fats'),
+                            func.sum(FoodLog.carbs).label('total_carbs'),
+                            func.count(FoodLog.id).label('entries_count')
+                        )
+                        .where(
+                            and_(
+                                FoodLog.user_id == user_id,
+                                FoodLog.date == target_date
+                            )
+                        )
+                    )
+                    
+                    result = await session.execute(stmt)
+                    row = result.first()
+                    
+                    return {
+                        'calories': float(row.total_calories or 0),
+                        'proteins': float(row.total_proteins or 0),
+                        'fats': float(row.total_fats or 0),
+                        'carbs': float(row.total_carbs or 0),
+                        'entries_count': int(row.entries_count or 0)
+                    }
+            
+            return await _get_from_db()
+            
+        except Exception as e:
+            logger.error(f"Failed to get daily nutrition summary from database: {e}")
+            # Return default fallback data
+            return DatabaseFallback.get_default_nutrition_summary()
     
     @retry_db_operation(max_retries=2)
     async def get_weekly_nutrition_summary(self, user_id: int) -> Dict[str, float]:

@@ -3,6 +3,7 @@ Database configuration and connection management
 """
 import asyncio
 import logging
+import os
 from typing import AsyncGenerator, Optional
 from contextlib import asynccontextmanager
 
@@ -265,9 +266,9 @@ class DatabaseHealthCheck:
             }
 
 
-# Connection retry decorator
-def retry_db_operation(max_retries: int = 3, delay: float = 1.0):
-    """Decorator for retrying database operations"""
+# Connection retry decorator with more aggressive retry policy
+def retry_db_operation(max_retries: int = 5, delay: float = 0.5):
+    """Decorator for retrying database operations with aggressive retry policy"""
     def decorator(func):
         async def wrapper(*args, **kwargs):
             last_exception = None
@@ -277,12 +278,98 @@ def retry_db_operation(max_retries: int = 3, delay: float = 1.0):
                     return await func(*args, **kwargs)
                 except Exception as e:
                     last_exception = e
-                    if attempt < max_retries - 1:
-                        logger.warning(f"Database operation failed (attempt {attempt + 1}): {e}")
-                        await asyncio.sleep(delay * (2 ** attempt))  # Exponential backoff
+                    error_msg = str(e).lower()
+                    
+                    # Check if it's a retryable error
+                    retryable_errors = [
+                        'service unavailable',
+                        'connection refused',
+                        'timeout',
+                        'network',
+                        'temporary failure',
+                        'server error',
+                        'database is locked',
+                        'connection reset',
+                        'connection lost',
+                        'connection closed',
+                        'ssl connection has been closed unexpectedly'
+                    ]
+                    
+                    is_retryable = any(err in error_msg for err in retryable_errors)
+                    
+                    if attempt < max_retries - 1 and is_retryable:
+                        wait_time = delay * (2 ** attempt)  # Exponential backoff
+                        logger.warning(f"Database operation failed (attempt {attempt + 1}/{max_retries}): {e}")
+                        logger.info(f"Retrying in {wait_time:.1f} seconds...")
+                        await asyncio.sleep(wait_time)
                     else:
-                        logger.error(f"Database operation failed after {max_retries} attempts: {e}")
+                        if is_retryable:
+                            logger.error(f"Database operation failed after {max_retries} attempts: {e}")
+                        else:
+                            logger.error(f"Database operation failed with non-retryable error: {e}")
+                        break
+            
+            # If all retries failed, return None instead of raising exception for some operations
+            if hasattr(func, '__name__'):
+                if func.__name__ in ['get_user_by_telegram_id', 'get_daily_nutrition_summary', 'health_check']:
+                    logger.warning(f"Returning None for failed {func.__name__} operation")
+                    return None
             
             raise last_exception
         return wrapper
     return decorator
+
+
+# Global fallback for database operations
+class DatabaseFallback:
+    """Fallback mechanisms when database is unavailable"""
+    
+    @staticmethod
+    def get_default_user_data(telegram_id: int) -> dict:
+        """Get default user data when database is unavailable"""
+        return {
+            'id': telegram_id,
+            'telegram_id': telegram_id,
+            'username': None,
+            'daily_goal_calories': 2000,
+            'language_code': 'en'
+        }
+    
+    @staticmethod
+    def get_default_nutrition_summary() -> dict:
+        """Get default nutrition summary when database is unavailable"""
+        return {
+            'calories': 0.0,
+            'proteins': 0.0,
+            'fats': 0.0,
+            'carbs': 0.0,
+            'entries_count': 0
+        }
+    
+    @staticmethod
+    async def log_to_file(user_id: int, product_name: str, nutrition_data: dict) -> bool:
+        """Log nutrition data to file when database is unavailable"""
+        try:
+            import json
+            from datetime import datetime
+            
+            log_entry = {
+                'timestamp': datetime.now().isoformat(),
+                'user_id': user_id,
+                'product_name': product_name,
+                'nutrition': nutrition_data
+            }
+            
+            # Create logs directory if it doesn't exist
+            os.makedirs('logs', exist_ok=True)
+            
+            # Append to daily log file
+            log_file = f"logs/nutrition_fallback_{datetime.now().strftime('%Y%m%d')}.json"
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+            
+            logger.info(f"Nutrition data logged to file: {log_file}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to log nutrition data to file: {e}")
+            return False
