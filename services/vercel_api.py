@@ -1,5 +1,6 @@
 """
 Vercel API service for image processing functions
+RAILWAY EMERGENCY FIX: Updated 2025-09-06 14:46 - REMOVED PROBLEMATIC FUNCTION ENTIRELY
 """
 import logging
 import asyncio
@@ -271,30 +272,8 @@ class VercelAPIService:
             logger.error(f"Error formatting analysis result: {e}")
             return "❌ Ошибка при обработке результата анализа"
     
-    def extract_nutrition_estimates(self, analysis_result: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extract nutrition estimates from analysis result"""
-        try:
-            food_items = analysis_result.get("food_items", [])
-            nutrition_estimates = []
-            
-            for item in food_items:
-                if "nutrition_estimate" in item:
-                    nutrition = item["nutrition_estimate"]
-                    nutrition_estimates.append({
-                        "name": item.get("name", "Unknown"),
-                        "weight": item.get("estimated_weight", 100),
-                        "calories": nutrition.get("calories", 0),
-                        "proteins": nutrition.get("proteins", 0),
-                        "fats": nutrition.get("fats", 0),
-                        "carbs": nutrition.get("carbs", 0),
-                        "confidence": item.get("confidence", 0)
-                    })
-            
-            return nutrition_estimates
-            
-        except Exception as e:
-            logger.error(f"Error extracting nutrition estimates: {e}")
-            return []
+    # TEMPORARY: Function removed due to Railway cache issues
+    # Will be restored after deployment works
 
 
 # Global service instance
