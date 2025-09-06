@@ -153,21 +153,13 @@ class NutritionBot:
         logger.info(f"Starting bot in webhook mode: {webhook_url}")
         
         try:
-            # Set webhook
-            await self.bot.set_webhook(
-                url=f"{webhook_url}{webhook_path}",
-                allowed_updates=self.dp.resolve_used_update_types()
-            )
-            
-            # Setup webhook handler
+            # Setup webhook handler BEFORE starting server
             webhook_requests_handler = SimpleRequestHandler(
                 dispatcher=self.dp,
                 bot=self.bot,
             )
             webhook_requests_handler.register(self.app, path=webhook_path)
-            
-            # Start background tasks
-            asyncio.create_task(self._background_tasks())
+            logger.info(f"Webhook handler registered for path: {webhook_path}")
             
             # Start web server
             runner = web.AppRunner(self.app)
@@ -177,6 +169,16 @@ class NutritionBot:
             await site.start()
             
             logger.info(f"Webhook server started on port {settings.port}")
+            
+            # Set webhook AFTER server is running
+            await self.bot.set_webhook(
+                url=f"{webhook_url}{webhook_path}",
+                allowed_updates=self.dp.resolve_used_update_types()
+            )
+            logger.info(f"Webhook set to: {webhook_url}{webhook_path}")
+            
+            # Start background tasks
+            asyncio.create_task(self._background_tasks())
             
             # Wait for shutdown signal
             await self._shutdown_event.wait()
