@@ -36,13 +36,25 @@ class DatabaseManager:
     async def initialize(self) -> None:
         """Initialize database connection"""
         try:
-            # Ensure the database URL uses asyncpg driver
+            # Ensure the database URL uses asyncpg driver and fix SSL parameters
             db_url = DATABASE_CONFIG["url"]
             if db_url.startswith("postgresql://"):
                 db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
             elif not db_url.startswith("postgresql+asyncpg://"):
                 # If it's already postgresql+asyncpg://, keep it as is
                 pass
+            
+            # Fix SSL parameters for asyncpg compatibility
+            # Convert psycopg2 SSL parameters to asyncpg format
+            if "sslmode=" in db_url:
+                # Replace sslmode with ssl for asyncpg
+                db_url = db_url.replace("sslmode=require", "ssl=true")
+                db_url = db_url.replace("sslmode=prefer", "ssl=true")
+                db_url = db_url.replace("sslmode=allow", "ssl=true")
+                db_url = db_url.replace("sslmode=disable", "ssl=false")
+                # Remove any remaining sslmode parameters
+                import re
+                db_url = re.sub(r'[&?]sslmode=[^&]*', '', db_url)
             
             self._engine = create_async_engine(
                 db_url,
