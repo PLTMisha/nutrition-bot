@@ -4,6 +4,7 @@ Main entry point for the Nutrition Bot
 import asyncio
 import logging
 import logging.config
+import os
 import signal
 import sys
 
@@ -280,7 +281,9 @@ async def main() -> None:
         # Determine run mode based on environment
         if settings.railway_environment == "production":
             # Production mode - webhook
-            webhook_url = f"https://{settings.railway_environment}.up.railway.app"
+            # Use Railway's private domain from environment variables
+            railway_domain = os.getenv('RAILWAY_PRIVATE_DOMAIN', 'nutrition-bot.railway.app')
+            webhook_url = f"https://{railway_domain}"
             await nutrition_bot.start_webhook(webhook_url)
         else:
             # Development mode - polling
