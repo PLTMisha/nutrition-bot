@@ -36,14 +36,22 @@ class DatabaseManager:
     async def initialize(self) -> None:
         """Initialize database connection"""
         try:
+            # Ensure the database URL uses asyncpg driver
+            db_url = DATABASE_CONFIG["url"]
+            if db_url.startswith("postgresql://"):
+                db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            elif not db_url.startswith("postgresql+asyncpg://"):
+                # If it's already postgresql+asyncpg://, keep it as is
+                pass
+            
             self._engine = create_async_engine(
-                DATABASE_CONFIG["url"],
+                db_url,
                 echo=DATABASE_CONFIG["echo"],
                 pool_size=DATABASE_CONFIG["pool_size"],
                 max_overflow=DATABASE_CONFIG["max_overflow"],
                 pool_timeout=DATABASE_CONFIG["pool_timeout"],
                 pool_recycle=DATABASE_CONFIG["pool_recycle"],
-                poolclass=NullPool if "railway" in DATABASE_CONFIG["url"] else None,
+                poolclass=NullPool if "railway" in db_url else None,
             )
             
             # Add connection event listeners
