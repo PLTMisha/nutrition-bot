@@ -280,10 +280,16 @@ async def main() -> None:
     try:
         await nutrition_bot.initialize()
         
-        # Determine run mode based on environment
-        if settings.railway_environment == "production":
+        # FORCE WEBHOOK MODE - Railway is not detecting environment correctly
+        # Always use webhook mode if we have a PORT environment variable (Railway indicator)
+        if os.getenv('PORT'):
+            # Production mode - webhook (Railway)
+            railway_domain = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_STATIC_URL', '').replace('https://', '') or 'nutrition-bot.railway.app'
+            webhook_url = f"https://{railway_domain}"
+            logger.info(f"FORCING WEBHOOK MODE - PORT detected: {os.getenv('PORT')}")
+            await nutrition_bot.start_webhook(webhook_url)
+        elif settings.railway_environment == "production":
             # Production mode - webhook
-            # Use Railway's public domain for webhook (accessible from external services)
             railway_domain = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_STATIC_URL', '').replace('https://', '') or 'nutrition-bot.railway.app'
             webhook_url = f"https://{railway_domain}"
             await nutrition_bot.start_webhook(webhook_url)
