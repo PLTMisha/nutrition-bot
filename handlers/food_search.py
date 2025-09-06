@@ -2,7 +2,7 @@
 Food search handlers for the Nutrition Bot
 """
 import logging
-from aiogram import Router, F
+from aiogram import Router, Dispatcher, F
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
@@ -85,6 +85,6 @@ async def handle_food_search(message: Message, db_service: DatabaseService, stat
         )
 
 
-def register_food_search_handlers(dp: Router) -> None:
+def register_food_search_handlers(dp: Dispatcher) -> None:
     """Register food search handlers"""
     dp.include_router(router)

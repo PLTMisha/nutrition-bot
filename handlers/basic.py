@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, date
 from typing import Dict, Any
 
-from aiogram import Router, F
+from aiogram import Router, Dispatcher, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -307,6 +307,6 @@ async def language_selection_callback(callback: CallbackQuery, db_service: Datab
         await callback.answer("❌ Error changing language")
 
 
-def register_basic_handlers(dp: Router) -> None:
+def register_basic_handlers(dp: Dispatcher) -> None:
     """Register basic handlers"""
     dp.include_router(router)

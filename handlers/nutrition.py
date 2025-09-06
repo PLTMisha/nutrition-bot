@@ -3,7 +3,7 @@ Nutrition tracking and statistics handlers for the Nutrition Bot
 """
 import logging
 from datetime import date, timedelta
-from aiogram import Router, F
+from aiogram import Router, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 
@@ -259,6 +259,6 @@ async def delete_last_callback(callback: CallbackQuery, db_service: DatabaseServ
         await callback.answer("❌ Ошибка при удалении записи")
 
 
-def register_nutrition_handlers(dp: Router) -> None:
+def register_nutrition_handlers(dp: Dispatcher) -> None:
     """Register nutrition handlers"""
     dp.include_router(router)

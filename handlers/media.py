@@ -2,7 +2,7 @@
 Media handlers for the Nutrition Bot (photos, barcodes)
 """
 import logging
-from aiogram import Router, F
+from aiogram import Router, Dispatcher, F
 from aiogram.types import Message, PhotoSize
 from aiogram.fsm.context import FSMContext
 
@@ -169,6 +169,6 @@ async def handle_photo(message: Message, db_service: DatabaseService, state: FSM
         )
 
 
-def register_media_handlers(dp: Router) -> None:
+def register_media_handlers(dp: Dispatcher) -> None:
     """Register media handlers"""
     dp.include_router(router)
