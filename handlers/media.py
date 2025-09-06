@@ -123,8 +123,12 @@ async def handle_photo(message: Message, db_service: DatabaseService, state: FSM
         # Initialize Vercel API service
         vercel_api = VercelAPIService()
         
-        # Try barcode detection first
-        barcode_result = await vercel_api.process_barcode(photo_base64)
+        # Try barcode detection first with fallback
+        barcode_result = None
+        try:
+            barcode_result = await vercel_api.process_barcode(photo_base64)
+        except Exception as e:
+            logger.error(f"Vercel API error for barcode: {e}")
         
         if barcode_result and not barcode_result.get('error'):
             # Barcode found
@@ -154,14 +158,18 @@ async def handle_photo(message: Message, db_service: DatabaseService, state: FSM
             await message.answer(result_text, reply_markup=get_main_menu_keyboard(user_language))
             return
         
-        # Try food photo analysis
+        # Try food photo analysis with fallback
         analysis_prompt = {
             Language.EN: "Analyze this food photo and determine portions",
             Language.RU: "Проанализируй это фото еды и определи порции",
             Language.UK: "Проаналізуй це фото їжі та визнач порції"
         }.get(user_language, "Analyze this food photo and determine portions")
         
-        photo_result = await vercel_api.analyze_photo(photo_base64, analysis_prompt)
+        photo_result = None
+        try:
+            photo_result = await vercel_api.analyze_photo(photo_base64, analysis_prompt)
+        except Exception as e:
+            logger.error(f"Vercel API error for photo analysis: {e}")
         
         await processing_msg.delete()
         
@@ -250,16 +258,14 @@ async def handle_photo(message: Message, db_service: DatabaseService, state: FSM
                 
                 await message.answer(error_text, reply_markup=get_main_menu_keyboard(user_language))
         else:
-            # Both analyses failed
-            error_msg = photo_result.get('error', 'Unknown error') if photo_result else 'Service unavailable'
+            # Both analyses failed - provide fallback message
+            fallback_text = {
+                Language.EN: "📷 <b>Photo received!</b>\n\nSorry, image analysis is temporarily unavailable. You can:\n\n• Try text search: 'apple 150g'\n• Use basic commands: /help\n• Try again later when services are restored",
+                Language.RU: "📷 <b>Фото получено!</b>\n\nИзвините, анализ изображений временно недоступен. Вы можете:\n\n• Попробовать текстовый поиск: 'яблоко 150г'\n• Использовать основные команды: /help\n• Повторить попытку позже",
+                Language.UK: "📷 <b>Фото отримано!</b>\n\nВибачте, аналіз зображень тимчасово недоступний. Ви можете:\n\n• Спробувати текстовий пошук: 'яблуко 150г'\n• Використовувати основні команди: /help\n• Повторити спробу пізніше"
+            }.get(user_language, "📷 Photo received! Image analysis temporarily unavailable.")
             
-            error_text = {
-                Language.EN: f"❌ Could not process image.\n\nError: {error_msg}\n\nTry:\n• Take a new photo\n• Check image quality\n• Try again later",
-                Language.RU: f"❌ Не удалось обработать изображение.\n\nОшибка: {error_msg}\n\nПопробуйте:\n• Сделать новое фото\n• Проверить качество изображения\n• Повторить попытку позже",
-                Language.UK: f"❌ Не вдалося обробити зображення.\n\nПомилка: {error_msg}\n\nСпробуйте:\n• Зробити нове фото\n• Перевірити якість зображення\n• Повторити спробу пізніше"
-            }.get(user_language, f"❌ Could not process image. Error: {error_msg}")
-            
-            await message.answer(error_text, reply_markup=get_main_menu_keyboard(user_language))
+            await message.answer(fallback_text, reply_markup=get_main_menu_keyboard(user_language))
         
     except Exception as e:
         logger.error(f"Error processing photo: {e}")
