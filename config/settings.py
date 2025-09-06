@@ -43,8 +43,10 @@ class Settings:
                                                 "https://world.openfoodfacts.org/api", 
                                                 required=False)
         
-        # Railway
-        self.railway_environment = get_env_var('RAILWAY_ENVIRONMENT', "development", required=False)
+        # Railway - detect Railway environment by checking for Railway-specific variables
+        railway_vars = ['RAILWAY_PROJECT_ID', 'RAILWAY_SERVICE_ID', 'RAILWAY_DEPLOYMENT_ID']
+        is_railway = any(os.getenv(var) for var in railway_vars)
+        self.railway_environment = "production" if is_railway else "development"
         self.port = int(get_env_var('PORT', "8000", required=False))
         
         # Logging
