@@ -21,7 +21,7 @@ from config.database import init_database, close_database, create_tables
 from handlers import register_all_handlers
 from services.database_service import DatabaseService
 from utils.cache import CacheManager
-from utils.rate_limiter import RateLimiter
+from utils.rate_limiter import AdvancedRateLimiter
 from utils.middleware import setup_middlewares
 
 # Configure logging
@@ -38,7 +38,7 @@ class NutritionBot:
         self.app: web.Application = None
         self.db_service: DatabaseService = None
         self.cache_manager: CacheManager = None
-        self.rate_limiter: RateLimiter = None
+        self.rate_limiter: AdvancedRateLimiter = None
         self._shutdown_event = asyncio.Event()
     
     async def initialize(self) -> None:
@@ -53,7 +53,7 @@ class NutritionBot:
             # Initialize services
             self.db_service = DatabaseService()
             self.cache_manager = CacheManager()
-            self.rate_limiter = RateLimiter()
+            self.rate_limiter = AdvancedRateLimiter()
             
             # Initialize bot and dispatcher
             self.bot = Bot(
