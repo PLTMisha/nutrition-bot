@@ -285,8 +285,11 @@ async def main() -> None:
         force_polling = os.getenv('FORCE_POLLING_MODE', '').lower() == 'true'
         
         if force_polling:
-            # Force polling mode
+            # Force polling mode - delete webhook first
             logger.info("🔄 EMERGENCY POLLING MODE - Forced by FORCE_POLLING_MODE")
+            logger.info("🗑️ Deleting webhook to enable polling...")
+            await nutrition_bot.bot.delete_webhook(drop_pending_updates=True)
+            logger.info("✅ Webhook deleted, starting polling mode")
             await nutrition_bot.start_polling()
         else:
             # Try webhook mode first
