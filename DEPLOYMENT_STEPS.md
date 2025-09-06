@@ -65,14 +65,24 @@ PORT=8000
 
 **Добавьте переменные окружения в Vercel:**
 1. В проекте Vercel перейдите в Settings → Environment Variables
-2. Добавьте:
+2. Нажмите "Add New" и добавьте каждую переменную отдельно:
 
-```
-LANGDOCK_API_KEY=ваш_langdock_ключ
-LANGDOCK_BASE_URL=https://api.langdock.com/v1
-```
+**Переменная 1:**
+- Name: `LANGDOCK_API_KEY`
+- Value: `ваш_langdock_ключ` (без кавычек)
+- Environment: Production, Preview, Development (выберите все)
 
-3. Нажмите "Redeploy" для применения изменений
+**Переменная 2:**
+- Name: `LANGDOCK_BASE_URL`
+- Value: `https://api.langdock.com/v1`
+- Environment: Production, Preview, Development (выберите все)
+
+**Переменная 3:**
+- Name: `OPENFOODFACTS_API_URL`
+- Value: `https://world.openfoodfacts.org/api`
+- Environment: Production, Preview, Development (выберите все)
+
+3. После добавления всех переменных нажмите "Redeploy" для применения изменений
 
 ## ✅ Проверка работы
 
