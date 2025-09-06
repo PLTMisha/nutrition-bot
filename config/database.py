@@ -119,7 +119,8 @@ class DatabaseManager:
             
             # Test connection
             async with self._engine.begin() as conn:
-                await conn.execute("SELECT 1")
+                from sqlalchemy import text
+                await conn.execute(text("SELECT 1"))
             
             logger.info("Database connection initialized successfully")
             
@@ -166,7 +167,8 @@ class DatabaseManager:
         """Check database health"""
         try:
             async with self.get_session() as session:
-                await session.execute("SELECT 1")
+                from sqlalchemy import text
+                await session.execute(text("SELECT 1"))
             return True
         except Exception as e:
             logger.error(f"Database health check failed: {e}")
@@ -245,7 +247,8 @@ class DatabaseHealthCheck:
                 
                 for table in tables_to_check:
                     try:
-                        await session.execute(f"SELECT 1 FROM {table} LIMIT 1")
+                        from sqlalchemy import text
+                        await session.execute(text(f"SELECT 1 FROM {table} LIMIT 1"))
                         existing_tables.append(table)
                     except Exception:
                         pass
