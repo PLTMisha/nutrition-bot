@@ -280,21 +280,27 @@ async def main() -> None:
     try:
         await nutrition_bot.initialize()
         
-        # FORCE WEBHOOK MODE - Railway is not detecting environment correctly
-        # Always use webhook mode if we have a PORT environment variable (Railway indicator)
-        if os.getenv('PORT'):
+        # CRITICAL FIX: Always use webhook mode on Railway
+        # Check multiple indicators for Railway environment
+        is_railway = (
+            os.getenv('PORT') or 
+            os.getenv('RAILWAY_PROJECT_ID') or 
+            os.getenv('FORCE_WEBHOOK_MODE', '').lower() == 'true' or
+            'railway.app' in os.getenv('RAILWAY_PUBLIC_DOMAIN', '') or
+            'railway.app' in os.getenv('RAILWAY_STATIC_URL', '')
+        )
+        
+        if is_railway:
             # Production mode - webhook (Railway)
             railway_domain = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_STATIC_URL', '').replace('https://', '') or 'nutrition-bot.railway.app'
             webhook_url = f"https://{railway_domain}"
-            logger.info(f"FORCING WEBHOOK MODE - PORT detected: {os.getenv('PORT')}")
-            await nutrition_bot.start_webhook(webhook_url)
-        elif settings.railway_environment == "production":
-            # Production mode - webhook
-            railway_domain = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_STATIC_URL', '').replace('https://', '') or 'nutrition-bot.railway.app'
-            webhook_url = f"https://{railway_domain}"
+            logger.info(f"🚀 STARTING WEBHOOK MODE - Railway detected")
+            logger.info(f"📍 PORT: {os.getenv('PORT')}")
+            logger.info(f"🔗 WEBHOOK URL: {webhook_url}")
             await nutrition_bot.start_webhook(webhook_url)
         else:
             # Development mode - polling
+            logger.info("🔄 STARTING POLLING MODE - Local development")
             await nutrition_bot.start_polling()
             
     except KeyboardInterrupt:
