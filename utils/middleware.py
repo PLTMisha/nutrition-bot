@@ -10,7 +10,7 @@ from aiogram.types import TelegramObject, Update, Message, CallbackQuery
 
 from services.database_service import DatabaseService
 from utils.cache import CacheManager
-from utils.rate_limiter import RateLimiter
+from utils.rate_limiter import AdvancedRateLimiter
 from utils.language_middleware import LanguageMiddleware
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ class CacheMiddleware(BaseMiddleware):
 class RateLimitMiddleware(BaseMiddleware):
     """Middleware for rate limiting"""
     
-    def __init__(self, rate_limiter: RateLimiter):
+    def __init__(self, rate_limiter: AdvancedRateLimiter):
         self.rate_limiter = rate_limiter
         super().__init__()
     
@@ -319,7 +319,7 @@ def setup_middlewares(
     dp,
     db_service: DatabaseService,
     cache_manager: CacheManager,
-    rate_limiter: RateLimiter
+    rate_limiter: AdvancedRateLimiter
 ) -> None:
     """Setup all middlewares for the dispatcher"""
     
