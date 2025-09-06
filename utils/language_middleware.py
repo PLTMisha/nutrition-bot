@@ -34,8 +34,12 @@ class LanguageMiddleware(BaseMiddleware):
         telegram_lang_code = event.from_user.language_code
         
         try:
-            # Get user from database
-            user = await self.db_service.get_user_by_telegram_id(user_id)
+            # Get user from database with timeout protection
+            import asyncio
+            user = await asyncio.wait_for(
+                self.db_service.get_user_by_telegram_id(user_id),
+                timeout=2.0  # 2 second timeout
+            )
             
             if user:
                 # Use saved language preference
@@ -47,10 +51,18 @@ class LanguageMiddleware(BaseMiddleware):
             # Inject language into handler data
             data["user_language"] = user_lang
             
+        except asyncio.TimeoutError:
+            logger.warning(f"Language detection timeout for user {user_id}, using Telegram language")
+            # Fallback to Telegram language
+            data["user_language"] = get_user_language(telegram_lang_code)
+            
         except Exception as e:
-            logger.error(f"Error determining user language: {e}")
-            # Fallback to English
-            data["user_language"] = Language.EN
+            logger.warning(f"Error determining user language for user {user_id}: {e}, using fallback")
+            # Fallback to Telegram language or English
+            try:
+                data["user_language"] = get_user_language(telegram_lang_code)
+            except:
+                data["user_language"] = Language.EN
         
-        # Call the handler
+        # Call the handler (ALWAYS continue regardless of DB issues)
         return await handler(event, data)

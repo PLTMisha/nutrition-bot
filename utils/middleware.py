@@ -173,7 +173,7 @@ class LoggingMiddleware(BaseMiddleware):
 
 
 class UserActivityMiddleware(BaseMiddleware):
-    """Middleware to track user activity"""
+    """Middleware to track user activity with fallback protection"""
     
     def __init__(self, db_service: DatabaseService):
         self.db_service = db_service
@@ -188,18 +188,24 @@ class UserActivityMiddleware(BaseMiddleware):
         # Update user activity for messages and callback queries
         if isinstance(event, (Message, CallbackQuery)):
             try:
-                # Update user's last activity
-                await self.db_service.create_or_get_user(
-                    telegram_id=event.from_user.id,
-                    username=event.from_user.username,
-                    first_name=event.from_user.first_name,
-                    last_name=event.from_user.last_name,
-                    language_code=event.from_user.language_code or "en"
+                # Update user's last activity with timeout protection
+                import asyncio
+                await asyncio.wait_for(
+                    self.db_service.create_or_get_user(
+                        telegram_id=event.from_user.id,
+                        username=event.from_user.username,
+                        first_name=event.from_user.first_name,
+                        last_name=event.from_user.last_name,
+                        language_code=event.from_user.language_code or "en"
+                    ),
+                    timeout=3.0  # 3 second timeout
                 )
+            except asyncio.TimeoutError:
+                logger.warning(f"User activity update timeout for user {event.from_user.id} (non-critical)")
             except Exception as e:
-                logger.error(f"Failed to update user activity: {e}")
+                logger.warning(f"Failed to update user activity for user {event.from_user.id}: {e} (non-critical)")
         
-        # Call the handler
+        # Call the handler (ALWAYS continue regardless of DB issues)
         return await handler(event, data)
 
 
